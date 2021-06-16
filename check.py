@@ -20,6 +20,7 @@ from selenium.webdriver.support import expected_conditions
 list_url = 'https://api.place.naver.com/graphql'
 item_url = 'https://v-search.nid.naver.com/reservation/standby?orgCd={cd}&sid={sid}'
 progress_url = 'https://v-search.nid.naver.com/reservation/progress?key={key}&cd={vaccine_id}'
+TIMEOUT = 3
 session = requests.session()
 
 # Colors from https://stackoverflow.com/a/54955094
@@ -68,19 +69,22 @@ def check_agencies(x1='126.8281358', y1='37.5507676', x2='126.8603223', y2='37.5
         'Host': 'api.place.naver.com',
         'Content-Length': str(len(json.dumps(data)))
     }
-    r = requests.post(list_url, headers=headers, json=data)
     try:
+        r = requests.post(list_url, headers=headers, json=data, timeout=TIMEOUT)
         items = r.json()[0]['data']['rests']['businesses']['items']
+    except requests.exceptions.ReadTimeout:
+        print(f'\n{style.WARNING}Request timeout{style.ENDC}')
+        return []
     except json.JSONDecodeError:
-        print(f'\n{style.WARNING}Did not not get correct response: Not JSON {r.text} {style.ENDC}')
+        print(f'\n{style.WARNING}Did not not get correct response; Maybe not JSON or server error {r.text} {style.ENDC}')
         return []
     except TypeError:
-        print(f'\n{style.WARNING}Did not not get correct response: Maybe no result {r.json()} {style.ENDC}')
+        print(f'\n{style.WARNING}Did not not get correct response - Maybe with no result or server error: {r.json()} {style.ENDC}')
         return []
     found_items = []
     print(f'{len(items)}', end=' ')
     for item in items:
-        v = item['vaccineQuantity']
+        v = item.get('vaccineQuantity')
         if v and v.get('quantity') != '0':
             found_items.append(item)
     
@@ -133,11 +137,26 @@ def view_agency(cd, sid, naver_cookies, vaccine_id, driver, auto_progress=False)
             driver = open_naver_page(driver, r.url)
             return True
 
+def prepare_naver_driver(naver_cookies):
+        # Login into NAVER
+    timeout = 10
+    driver = webdriver.Chrome('./chromedriver')
+    wait = WebDriverWait(driver, 10)
+    driver.get('https://www.naver.com')
+    WebDriverWait(driver, timeout).until(expected_conditions.url_changes('data;')) # Time to load
+    time.sleep(1)
+    driver.add_cookie({'name' : 'NNB', 'value' : naver_cookies.get('NNB'), 'path': '/', 'domain' : '.naver.com', 'secure': True})
+    driver.add_cookie({'name' : 'NID_AUT', 'value' : naver_cookies.get('NID_AUT'), 'path': '/', 'domain' : '.naver.com'})
+    driver.add_cookie({'name' : 'NID_JKL', 'value' : naver_cookies.get('NID_JKL'), 'path': '/', 'domain' : '.naver.com', 'secure': True})
+    driver.add_cookie({'name' : 'NID_SES', 'value' : naver_cookies.get('NID_SES'), 'path': '/', 'domain' : '.naver.com'})
+    driver.refresh()
+    return driver
+
 # Opens NAVER page with login using cookies
 def open_naver_page(driver, url):
     driver.get(url)
     driver.switch_to.window(driver.current_window_handle)
-
+    
 
 # Check areas and view_agency when found vaccineQuantity
 def check(area_list, vaccine_id, naver_cookies, driver, auto_progress):
@@ -147,10 +166,15 @@ def check(area_list, vaccine_id, naver_cookies, driver, auto_progress):
             print(f'\n{style.OK}Found {len(found_items)} agencies {style.ENDC}')
         for item in found_items:
             name = item.get('name')
-            print(f'Checking {name} ...')
+            v = item.get('vaccineQuantity')
+            quantity = v.get('quantity')
+            print(f'Checking {name}({quantity}) ... ', end=' ')
             result = view_agency(item['vaccineQuantity']['vaccineOrganizationCode'], item['id'], naver_cookies=naver_cookies, vaccine_id=vaccine_id, driver=driver, auto_progress=auto_progress)
             if result:
+                print(f'{style.SUCCESS}Found!{style.ENDC}')
                 return result
+            else:
+                print(f'{style.SUCCESS}Not found{style.ENDC}')
                 
             
 
@@ -173,17 +197,7 @@ def main():
     area_list = [a.split('%3B') for a in areas] 
 
     # Login into NAVER
-    timeout = 10
-    driver = webdriver.Chrome('./chromedriver')
-    wait = WebDriverWait(driver, 10)
-    driver.get('https://www.naver.com')
-    WebDriverWait(driver, timeout).until(expected_conditions.url_changes('data;')) # Time to load
-    time.sleep(1)
-    driver.add_cookie({'name' : 'NNB', 'value' : naver_cookies.get('NNB'), 'path': '/', 'domain' : '.naver.com', 'secure': True})
-    driver.add_cookie({'name' : 'NID_AUT', 'value' : naver_cookies.get('NID_AUT'), 'path': '/', 'domain' : '.naver.com'})
-    driver.add_cookie({'name' : 'NID_JKL', 'value' : naver_cookies.get('NID_JKL'), 'path': '/', 'domain' : '.naver.com', 'secure': True})
-    driver.add_cookie({'name' : 'NID_SES', 'value' : naver_cookies.get('NID_SES'), 'path': '/', 'domain' : '.naver.com'})
-    driver.refresh()
+    driver = prepare_naver_driver(naver_cookies)
 
     # System call
     os.system('')
@@ -196,7 +210,10 @@ def main():
         result = check(area_list, vaccine_id, naver_cookies, driver=driver, auto_progress=False)
         end_time = time.perf_counter()
         if result:
-            input(f'{style.SUCCESS}Waiting for user input {style.ENDC}')
+            #input(f'{style.SUCCESS}Waiting for user input {style.ENDC}')
+            print(f'- took: {end_time - start_time:.2f}s,')
+            print(f'{style.SUCCESS}{result}')
+            result = None
         else:
             wait_time = random.random() / 2.0
             print(f'- took: {end_time - start_time:.2f}s, wait: {wait_time:.2f}s')
