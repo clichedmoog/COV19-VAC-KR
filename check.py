@@ -75,6 +75,7 @@ def check_agencies(x1='126.8281358', y1='37.5507676', x2='126.8603223', y2='37.5
         print(f'\n{style.WARNING}Did not not get correct response from server {r.json()}')
         return []
     found_items = []
+    print(f'{len(items)}', end=' ')
     for item in items:
         v = item['vaccineQuantity']
         if v and v.get('quantity') != '0':
@@ -111,10 +112,10 @@ def view_agency(cd, sid, naver_cookies, vaccine_id, driver, auto_progress=False)
     if elem[0].has_attr('disabled'):
         return None
     else:
-        print(f'\n{style.OK}Found vaccine available: {r.url}')
+        print(f'{style.OK}Found vaccine available: {r.url}')
         if auto_progress:
-            print(f'{style.OK}Progressing automatically', ends='')
             url = progress_url.format(**locals())
+            print(f'{style.OK}Progressing automatically using {url} ...', end='')
             driver = open_naver_page(driver, url)
             elem = driver.find_element(By.CLASS_NAME, 'h_title')
             result_title = elem.get_attribute('textContent')
@@ -125,13 +126,12 @@ def view_agency(cd, sid, naver_cookies, vaccine_id, driver, auto_progress=False)
                 print(f'{style.SUCCESS}Successful')
                 return True
         else:
-            print(f'\n{style.OK}Found vaccine available: {r.url}')
+            print(f'Will open page {r.url}')
             driver = open_naver_page(driver, r.url)
             return True
 
 # Opens NAVER page with login using cookies
 def open_naver_page(driver, url):
-    print(f'Will open {url}')
     driver.get(url)
     driver.switch_to.window(driver.current_window_handle)
 
@@ -139,7 +139,7 @@ def open_naver_page(driver, url):
 # Check areas and view_agency when found vaccineQuantity
 def check(area_list, vaccine_id, naver_cookies, driver, auto_progress):
     for area in area_list:
-        found_items = check_agencies()
+        found_items = check_agencies(*area)
         if len(found_items) > 0:
             print(f'\n{style.OK}Found {len(found_items)} agencies')
         for item in found_items:
@@ -151,13 +151,12 @@ def check(area_list, vaccine_id, naver_cookies, driver, auto_progress):
                 
             
 
-
 def main():
     # Areas to monitor, this is bounds param from NAVER map using links like https://m.place.naver.com/rest/vaccine?vaccineFilter=used&x=126.9731665&y=37.5502763&bounds=126.94098%3B37.5125681%3B127.005353%3B37.5879655
     areas = [
         '126.7992413%3B37.5587393%3B126.8355692%3B37.5783834',  # 공항
         '126.8307895%3B37.5514289%3B126.8671173%3B37.5710749',  # 가양
-        '127.0023489%3B37.4845639%3B127.033248%3B37.5042445'    # 서초~강남
+        '126.9828187%3B37.4831649%3B127.0446168%3B37.5019267'    # 서초~강남
     ]
     vaccine_id = 'VEN00015' # 'VEN00015': AZ, 'VEN00016': Janssen
     naver_cookies = {       # Needs NNB, NID_AUT, NID_JKL, NID_SES cookies
@@ -189,13 +188,13 @@ def main():
     sys.stdout.flush()
     result = None
     while not result:
-        print('.', end='')
         sys.stdout.flush()
         result = check(area_list, vaccine_id, naver_cookies, driver=driver, auto_progress=False)
         if result:
             input(f'{style.SUCCESS}Waiting for user input')
         else:
-            time.sleep(0.6 + random.random()) # Check every 1~2 sec
+            time.sleep(0.3 + random.random()) # Check every 0.3 ~ 1.3 sec
+        print('')   # Line break
 
 
 
