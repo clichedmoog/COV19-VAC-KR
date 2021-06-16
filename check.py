@@ -71,8 +71,11 @@ def check_agencies(x1='126.8281358', y1='37.5507676', x2='126.8603223', y2='37.5
     r = requests.post(list_url, headers=headers, json=data)
     try:
         items = r.json()[0]['data']['rests']['businesses']['items']
+    except json.JSONDecodeError:
+        print(f'\n{style.WARNING}Did not not get correct response: Not JSON {r.text} {style.ENDC}')
+        return []
     except TypeError:
-        print(f'\n{style.WARNING}Did not not get correct response from server {r.json()}')
+        print(f'\n{style.WARNING}Did not not get correct response: Maybe no result {r.json()} {style.ENDC}')
         return []
     found_items = []
     print(f'{len(items)}', end=' ')
@@ -112,18 +115,18 @@ def view_agency(cd, sid, naver_cookies, vaccine_id, driver, auto_progress=False)
     if elem[0].has_attr('disabled'):
         return None
     else:
-        print(f'{style.OK}Found vaccine available: {r.url}')
+        print(f'{style.OK}Found vaccine available: {r.url} {style.ENDC}')
         if auto_progress:
             url = progress_url.format(**locals())
-            print(f'{style.OK}Progressing automatically using {url} ...', end='')
+            print(f'{style.OK}Progressing automatically using {url} ... {style.ENDC}', end='')
             driver = open_naver_page(driver, url)
             elem = driver.find_element(By.CLASS_NAME, 'h_title')
             result_title = elem.get_attribute('textContent')
             if result_title == '잔여백신 당일 예약이 실패되었습니다.':
-                print(f'{style.WARNING}Failed')
+                print(f'{style.WARNING}Failed {style.ENDC}')
                 return False
             else:
-                print(f'{style.SUCCESS}Successful')
+                print(f'{style.SUCCESS}Successful {style.ENDC}')
                 return True
         else:
             print(f'Will open page {r.url}')
@@ -141,7 +144,7 @@ def check(area_list, vaccine_id, naver_cookies, driver, auto_progress):
     for area in area_list:
         found_items = check_agencies(*area)
         if len(found_items) > 0:
-            print(f'\n{style.OK}Found {len(found_items)} agencies')
+            print(f'\n{style.OK}Found {len(found_items)} agencies {style.ENDC}')
         for item in found_items:
             name = item.get('name')
             print(f'Checking {name} ...')
@@ -184,17 +187,19 @@ def main():
 
     # System call
     os.system('')
-    print(f'Monitoring {style.BOLD}{len(area_list)} areas{style.ENDC}')
+    print(f'Monitoring {style.BOLD}{len(area_list)}{style.ENDC} areas')
     sys.stdout.flush()
     result = None
     while not result:
         sys.stdout.flush()
+        start_time = time.perf_counter()
         result = check(area_list, vaccine_id, naver_cookies, driver=driver, auto_progress=False)
+        end_time = time.perf_counter()
         if result:
-            input(f'{style.SUCCESS}Waiting for user input')
+            input(f'{style.SUCCESS}Waiting for user input {style.ENDC}')
         else:
-            wait_time = 0.3 + random.random()
-            print(f'{wait_time: .2f}s wait')
+            wait_time = random.random() / 2.0
+            print(f'- took: {end_time - start_time:.2f}s, wait: {wait_time:.2f}s')
             time.sleep(wait_time) # Check every 0.3 ~ 1.3 sec
 
 
