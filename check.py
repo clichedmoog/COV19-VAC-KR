@@ -152,14 +152,14 @@ def check(area_list, vaccine_id, naver_cookies, driver, auto_progress):
             
 
 def main():
-    # Areas to monitor, this is bounds param from NAVER map using links like https://m.place.naver.com/rest/vaccine?vaccineFilter=used&x=126.9731665&y=37.5502763&bounds=126.94098%3B37.5125681%3B127.005353%3B37.5879655
+    # Areas to monitor: this is bounds param from NAVER map using links like https://m.place.naver.com/rest/vaccine?vaccineFilter=used&x=126.9731665&y=37.5502763&bounds=126.94098%3B37.5125681%3B127.005353%3B37.5879655
     areas = [
         '126.7992413%3B37.5587393%3B126.8355692%3B37.5783834',  # 공항
         '126.8307895%3B37.5514289%3B126.8671173%3B37.5710749',  # 가양
         '126.9828187%3B37.4831649%3B127.0446168%3B37.5019267'    # 서초~강남
     ]
-    vaccine_id = 'VEN00015' # 'VEN00015': AZ, 'VEN00016': Janssen
-    naver_cookies = {       # Needs NNB, NID_AUT, NID_JKL, NID_SES cookies
+    vaccine_id = 'VEN00015' # Vaccine code: 'VEN00015': AZ, 'VEN00016': Janssen
+    naver_cookies = {       # To Log into NAVER: NNB, NID_AUT, NID_JKL, NID_SES cookies
         'NNB': 'AFQAQGVV37EGA',
         'NID_AUT': 'CLW9ByqiNqGEbrtG/tG79Qrv3FAtTEb9bTFfW+C8o4d8MmZohL08KYuEZWh/sFRs',
         'NID_JKL': '8V+/hO68WQfz3DYqgi3eHkt1zvDlouj7hdWvdWvm6hM=',
@@ -174,8 +174,8 @@ def main():
     driver = webdriver.Chrome('./chromedriver')
     wait = WebDriverWait(driver, 10)
     driver.get('https://www.naver.com')
-    WebDriverWait(driver, timeout).until(expected_conditions.url_changes('')) # Time to load
-    time.sleep(0.5)
+    WebDriverWait(driver, timeout).until(expected_conditions.url_changes('data;')) # Time to load
+    time.sleep(1)
     driver.add_cookie({'name' : 'NNB', 'value' : naver_cookies.get('NNB'), 'path': '/', 'domain' : '.naver.com', 'secure': True})
     driver.add_cookie({'name' : 'NID_AUT', 'value' : naver_cookies.get('NID_AUT'), 'path': '/', 'domain' : '.naver.com'})
     driver.add_cookie({'name' : 'NID_JKL', 'value' : naver_cookies.get('NID_JKL'), 'path': '/', 'domain' : '.naver.com', 'secure': True})
@@ -193,8 +193,9 @@ def main():
         if result:
             input(f'{style.SUCCESS}Waiting for user input')
         else:
-            time.sleep(0.3 + random.random()) # Check every 0.3 ~ 1.3 sec
-        print('')   # Line break
+            wait_time = 0.3 + random.random()
+            print(f'{wait_time: .2f}s wait')
+            time.sleep(wait_time) # Check every 0.3 ~ 1.3 sec
 
 
 
