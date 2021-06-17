@@ -124,17 +124,21 @@ def view_agency(cd, sid, naver_cookies, vaccine_id, driver, auto_progress=False)
         return None
     else:
         print(f'{style.OK}Found vaccine available: {r.url} {style.ENDC}')
+        # Automatcally progress to reservation step
         if auto_progress:
             url = progress_url.format(**locals())
-            print(f'{style.OK}Progressing automatically using {url} ... {style.ENDC}', end='')
-            open_naver_page(driver, url)
+            print(f'{style.OK}Progressing automatically using {url} ... {style.ENDC}')
+            driver.get(url)
+            time.sleep(3)   # Wait page loads
             elem = driver.find_element(By.CLASS_NAME, 'h_title')
             try:
                 result_title = elem.get_attribute('textContent')
+                print(f'Got title from page: {result_title}')
             except NoSuchElementException:
                 print(f'{style.WARNING}Failed? {style.ENDC}')
                 return False
             if result_title == '당일 예약정보입니다.':
+                driver.switch_to.window(driver.current_window_handle)
                 print(f'{style.SUCCESS}Successful {style.ENDC}')
                 return True
             elif result_title == '잔여백신 당일 예약이 실패되었습니다.':
@@ -143,10 +147,13 @@ def view_agency(cd, sid, naver_cookies, vaccine_id, driver, auto_progress=False)
             else:
                 print(f'{style.WARNING}Failed? {style.ENDC}')
                 return False
+        # Just display reservation page
         else:
             print(f'Will open page {r.url}')
-            open_naver_page(driver, r.url)
+            driver.get(r.url)
+            driver.switch_to.window(driver.current_window_handle)
             return True
+
 
 def prepare_naver_driver(naver_cookies):
         # Login into NAVER
@@ -163,11 +170,6 @@ def prepare_naver_driver(naver_cookies):
     driver.refresh()
     return driver
 
-# Opens NAVER page with login using cookies
-def open_naver_page(driver, url):
-    driver.get(url)
-    driver.switch_to.window(driver.current_window_handle)
-    
 
 # Check areas and view_agency when found vaccineQuantity
 def check(area_list, vaccine_id, naver_cookies, driver, auto_progress):
@@ -182,11 +184,7 @@ def check(area_list, vaccine_id, naver_cookies, driver, auto_progress):
             print(f'Checking {name}({quantity}) ... ', end=' ')
             result = view_agency(item['vaccineQuantity']['vaccineOrganizationCode'], item['id'], naver_cookies=naver_cookies, vaccine_id=vaccine_id, driver=driver, auto_progress=auto_progress)
             if result:
-                print(f'{style.SUCCESS}Found!{style.ENDC}')
                 return result
-            else:
-                print(f'{style.SUCCESS}Not found{style.ENDC}')
-                
             
 
 def main(areas, vaccine, naver_cookies):
@@ -213,9 +211,9 @@ def main(areas, vaccine, naver_cookies):
             print(f'{style.SUCCESS}{result}{style.ENDC}')
             input(f'Waiting for user input')
         else:
-            wait_time = 0.3 + random.random() / 3.0
+            wait_time = 0.2 + random.random() / 5.0
             print(f'- took: {end_time - start_time:.2f}s, wait: {wait_time:.2f}s')
-            time.sleep(wait_time) # Check every 0.3 ~ 0.93 sec
+            time.sleep(wait_time) # Check every 0.2 ~ 0.4 sec
 
 
 if __name__ == '__main__':
