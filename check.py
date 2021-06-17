@@ -193,7 +193,7 @@ def check(area_list, vaccine_id, naver_cookies, driver, auto_progress):
                 return result
 
 
-def main(areas, vaccine, naver_cookies):
+def main(areas, vaccine, naver_cookies, auto_progress):
     vaccines = {
         'AZ': 'VEN00015',
         'JS': 'VEN00016'
@@ -235,6 +235,7 @@ if __name__ == '__main__':
     parser.add_argument('-NA', '--NID_AUT', required=True, help='NAVER NID_AUT cookie')
     parser.add_argument('-NJ', '--NID_JKL', required=True, help='NAVER NID_JKL cookie')
     parser.add_argument('-NS', '--NID_SES', required=True, help='NAVER NID_SES cookie')
+    parser.add_argument('-c', '--check_only', action='store_true', default=False, help='Set if progress manually')
     args = parser.parse_args()
     naver_cookies = {
         'NNB': args.NNB,
@@ -242,4 +243,5 @@ if __name__ == '__main__':
         'NID_JKL': args.NID_JKL,
         'NID_SES': args.NID_SES,
     }
-    main(args.areas, args.vaccine, naver_cookies=naver_cookies)
+    auto_progress = not args.check_only
+    main(areas=args.areas, vaccine=args.vaccine, naver_cookies=naver_cookies, auto_progress=auto_progress)
