@@ -11,6 +11,7 @@ import requests
 
 from bs4 import BeautifulSoup
 from selenium import webdriver
+from selenium.common.exceptions import NoSuchElementException
 from selenium.webdriver.common.by import By
 from selenium.webdriver.common.keys import Keys
 from selenium.webdriver.support.ui import WebDriverWait
@@ -87,8 +88,8 @@ def check_agencies(x1='126.8281358', y1='37.5507676', x2='126.8603223', y2='37.5
     found_items = []
     print(f'{len(items)}', end=' ')
     for item in items:
-        v = item.get('vaccineQuantity')
-        if v and v.get('quantity') != '0':
+        v = item['vaccineQuantity']
+        if v and v['quantity'] != '0':
             found_items.append(item)
     
     return found_items
@@ -128,13 +129,20 @@ def view_agency(cd, sid, naver_cookies, vaccine_id, driver, auto_progress=False)
             print(f'{style.OK}Progressing automatically using {url} ... {style.ENDC}', end='')
             open_naver_page(driver, url)
             elem = driver.find_element(By.CLASS_NAME, 'h_title')
-            result_title = elem.get_attribute('textContent')
-            if result_title == '잔여백신 당일 예약이 실패되었습니다.':
+            try:
+                result_title = elem.get_attribute('textContent')
+            except NoSuchElementException:
+                print(f'{style.WARNING}Failed? {style.ENDC}')
+                return False
+            if result_title == '당일 예약정보입니다.':
+                print(f'{style.SUCCESS}Successful {style.ENDC}')
+                return True
+            elif result_title == '잔여백신 당일 예약이 실패되었습니다.':
                 print(f'{style.WARNING}Failed {style.ENDC}')
                 return False
             else:
-                print(f'{style.SUCCESS}Successful {style.ENDC}')
-                return True
+                print(f'{style.WARNING}Failed? {style.ENDC}')
+                return False
         else:
             print(f'Will open page {r.url}')
             open_naver_page(driver, r.url)
@@ -168,9 +176,9 @@ def check(area_list, vaccine_id, naver_cookies, driver, auto_progress):
         if len(found_items) > 0:
             print(f'\n{style.OK}Found {len(found_items)} agencies {style.ENDC}')
         for item in found_items:
-            name = item.get('name')
-            v = item.get('vaccineQuantity')
-            quantity = v.get('quantity')
+            name = item['name']
+            v = item['vaccineQuantity']
+            quantity = v['quantity']
             print(f'Checking {name}({quantity}) ... ', end=' ')
             result = view_agency(item['vaccineQuantity']['vaccineOrganizationCode'], item['id'], naver_cookies=naver_cookies, vaccine_id=vaccine_id, driver=driver, auto_progress=auto_progress)
             if result:
@@ -205,9 +213,9 @@ def main(areas, vaccine, naver_cookies):
             print(f'{style.SUCCESS}{result}{style.ENDC}')
             input(f'Waiting for user input')
         else:
-            wait_time = 0.3 + random.random() / 2.0
+            wait_time = 0.3 + random.random() / 3.0
             print(f'- took: {end_time - start_time:.2f}s, wait: {wait_time:.2f}s')
-            time.sleep(wait_time) # Check every 0.3 ~ 1.3 sec
+            time.sleep(wait_time) # Check every 0.3 ~ 0.93 sec
 
 
 if __name__ == '__main__':
@@ -216,7 +224,7 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('-a', '--areas', nargs='+', 
         help='Areas: bounds from url',
-        # 서초 ~ 강남 https://m.place.naver.com/rest/vaccine?vaccineFilter=used&x=126.9731665&y=37.5502763&bounds=126.94098%3B37.5125681%3B127.005353%3B37.5879655
+        # 서초 ~ 강남 https://m.place.naver.com/rest/vaccine?vaccineFilter=used&x=126.9731665&y=37.5502763&bounds=126.9828187%3B37.4831649%3B127.0446168%3B37.5019267
         default='126.9828187%3B37.4831649%3B127.0446168%3B37.5019267')
     parser.add_argument('-v', '--vaccine', required=True, help='Vaccine code: AZ, JS')
     parser.add_argument('-NN', '--NNB', required=True, help='NAVER NNB cookie')
