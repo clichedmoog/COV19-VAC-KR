@@ -5,6 +5,7 @@ import sys
 import time
 
 from decimal import Decimal
+from decimal import InvalidOperation
 from urllib.parse import urlparse, parse_qs
 
 import requests
@@ -36,10 +37,14 @@ class style:
 
 # Check agencies
 def check_agencies(x1='126.8281358', y1='37.5507676', x2='126.8603223', y2='37.5872323'):
-    x1 = Decimal(x1)
-    y1 = Decimal(y1)
-    x2 = Decimal(x2)
-    y2 = Decimal(y2)
+    try:
+        x1 = Decimal(x1)
+        y1 = Decimal(y1)
+        x2 = Decimal(x2)
+        y2 = Decimal(y2)
+    except InvalidOperation as e:
+        print(e)
+        return []
     data = [
         {
             "operationName":"vaccineList",
@@ -65,7 +70,7 @@ def check_agencies(x1='126.8281358', y1='37.5507676', x2='126.8603223', y2='37.5
         }
     ]
     headers = {
-        'Content-Type': 'application/json', 
+        'Content-Type': 'application/json',
         'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/14.1 Safari/605.1.15',
         'Host': 'api.place.naver.com',
         'Content-Length': str(len(json.dumps(data)))
@@ -78,7 +83,7 @@ def check_agencies(x1='126.8281358', y1='37.5507676', x2='126.8603223', y2='37.5
         print(f'{style.WARNING}T{style.ENDC}', end=' ')
         return []
     except json.JSONDecodeError:
-        # Did not not get correct response; Maybe not JSON or server error 
+        # Did not not get correct response; Maybe not JSON or server error
         print(f'{style.ERROR}E{style.ENDC}', end=' ')
         return []
     except TypeError:
@@ -91,7 +96,7 @@ def check_agencies(x1='126.8281358', y1='37.5507676', x2='126.8603223', y2='37.5
         v = item['vaccineQuantity']
         if v and v['quantity'] != '0':
             found_items.append(item)
-    
+
     return found_items
 
 
@@ -120,39 +125,40 @@ def view_agency(cd, sid, naver_cookies, vaccine_id, driver, auto_progress=False)
     soup = BeautifulSoup(html, 'html.parser')
     elem = soup.select(f'#{vaccine_id}')
     # Check the radio button disabled
-    if elem[0].has_attr('disabled'):
+    try:
+        if elem[0].has_attr('disabled'):
+            return None
+    except IndexError as e:
+        print(e)
         return None
-    else:
-        print(f'{style.OK}Found vaccine available: {r.url} {style.ENDC}')
-        # Automatcally progress to reservation step
-        if auto_progress:
-            url = progress_url.format(**locals())
-            print(f'{style.OK}Progressing automatically using {url} ... {style.ENDC}')
-            driver.get(url)
-            time.sleep(3)   # Wait page loads
-            elem = driver.find_element(By.CLASS_NAME, 'h_title')
-            try:
-                result_title = elem.get_attribute('textContent')
-                print(f'Got title from page: {result_title}')
-            except NoSuchElementException:
-                print(f'{style.WARNING}Failed? {style.ENDC}')
-                return False
-            if result_title == '당일 예약정보입니다.':
-                driver.switch_to.window(driver.current_window_handle)
-                print(f'{style.SUCCESS}Successful {style.ENDC}')
-                return True
-            elif result_title == '잔여백신 당일 예약이 실패되었습니다.':
-                print(f'{style.WARNING}Failed {style.ENDC}')
-                return False
-            else:
-                print(f'{style.WARNING}Failed? {style.ENDC}')
-                return False
-        # Just display reservation page
-        else:
-            print(f'Will open page {r.url}')
-            driver.get(r.url)
+    print(f'{style.OK}Found vaccine available: {r.url} {style.ENDC}')
+    if auto_progress:
+        url = progress_url.format(**locals())
+        print(f'{style.OK}Progressing automatically using {url} ... {style.ENDC}')
+        driver.get(url)
+        time.sleep(3)   # Wait page loads
+        elem = driver.find_element(By.CLASS_NAME, 'h_title')
+        try:
+            result_title = elem.get_attribute('textContent')
+            print(f'Got title from page: {result_title}')
+        except NoSuchElementException:
+            print(f'{style.WARNING}Failed? {style.ENDC}')
+            return False
+        if result_title == '당일 예약정보입니다.' or result_title.endswith('잔여백신 당일 예약이 완료되었습니다.'):
+            print(f'{style.SUCCESS}Successful {style.ENDC}')
             driver.switch_to.window(driver.current_window_handle)
             return True
+        elif result_title == '잔여백신 당일 예약이 실패되었습니다.':
+            print(f'{style.WARNING}Failed {style.ENDC}')
+            return False
+        else:
+            print(f'{style.WARNING}Failed? {style.ENDC}')
+            return False
+    else:
+        print(f'Will open page {r.url}')
+        driver.get(r.url)
+        driver.switch_to.window(driver.current_window_handle)
+        return True
 
 
 def prepare_naver_driver(naver_cookies):
@@ -185,7 +191,7 @@ def check(area_list, vaccine_id, naver_cookies, driver, auto_progress):
             result = view_agency(item['vaccineQuantity']['vaccineOrganizationCode'], item['id'], naver_cookies=naver_cookies, vaccine_id=vaccine_id, driver=driver, auto_progress=auto_progress)
             if result:
                 return result
-            
+
 
 def main(areas, vaccine, naver_cookies):
     vaccines = {
@@ -193,7 +199,7 @@ def main(areas, vaccine, naver_cookies):
         'JS': 'VEN00016'
     }
     # Build floats from bounds; separator ";" urlencoded "%3B"
-    area_list = [a.split('%3B') for a in areas] 
+    area_list = [a.split('%3B') for a in areas]
     vaccine_id = vaccines[vaccine]
 
     # Login into NAVER
@@ -205,7 +211,7 @@ def main(areas, vaccine, naver_cookies):
     while not result:
         sys.stdout.flush()
         start_time = time.perf_counter()
-        result = check(area_list, vaccine_id, naver_cookies, driver=driver, auto_progress=True)
+        result = check(area_list, vaccine_id, naver_cookies, driver=driver, auto_progress=False)
         end_time = time.perf_counter()
         if result:
             print(f'{style.SUCCESS}{result}{style.ENDC}')
@@ -230,7 +236,7 @@ if __name__ == '__main__':
     parser.add_argument('-NJ', '--NID_JKL', required=True, help='NAVER NID_JKL cookie')
     parser.add_argument('-NS', '--NID_SES', required=True, help='NAVER NID_SES cookie')
     args = parser.parse_args()
-    naver_cookies = { 
+    naver_cookies = {
         'NNB': args.NNB,
         'NID_AUT': args.NID_AUT,
         'NID_JKL': args.NID_JKL,
