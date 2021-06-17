@@ -1,8 +1,8 @@
+import argparse
 import json
 import random
 import sys
 import time
-import os
 
 from decimal import Decimal
 from urllib.parse import urlparse, parse_qs
@@ -73,13 +73,16 @@ def check_agencies(x1='126.8281358', y1='37.5507676', x2='126.8603223', y2='37.5
         r = requests.post(list_url, headers=headers, json=data, timeout=TIMEOUT)
         items = r.json()[0]['data']['rests']['businesses']['items']
     except requests.exceptions.ReadTimeout:
-        print(f'\n{style.WARNING}Request timeout{style.ENDC}')
+        # Request timeout
+        print(f'{style.WARNING}T{style.ENDC}', end=' ')
         return []
     except json.JSONDecodeError:
-        print(f'\n{style.WARNING}Did not not get correct response; Maybe not JSON or server error {r.text} {style.ENDC}')
+        # Did not not get correct response; Maybe not JSON or server error 
+        print(f'{style.ERROR}E{style.ENDC}', end=' ')
         return []
     except TypeError:
-        print(f'\n{style.WARNING}Did not not get correct response - Maybe with no result or server error: {r.json()} {style.ENDC}')
+        # Did not not get correct response - Maybe with no result or server error
+        print(f'{style.WARNING}E{style.ENDC}', end=' ')
         return []
     found_items = []
     print(f'{len(items)}', end=' ')
@@ -123,7 +126,7 @@ def view_agency(cd, sid, naver_cookies, vaccine_id, driver, auto_progress=False)
         if auto_progress:
             url = progress_url.format(**locals())
             print(f'{style.OK}Progressing automatically using {url} ... {style.ENDC}', end='')
-            driver = open_naver_page(driver, url)
+            open_naver_page(driver, url)
             elem = driver.find_element(By.CLASS_NAME, 'h_title')
             result_title = elem.get_attribute('textContent')
             if result_title == '잔여백신 당일 예약이 실패되었습니다.':
@@ -134,7 +137,7 @@ def view_agency(cd, sid, naver_cookies, vaccine_id, driver, auto_progress=False)
                 return True
         else:
             print(f'Will open page {r.url}')
-            driver = open_naver_page(driver, r.url)
+            open_naver_page(driver, r.url)
             return True
 
 def prepare_naver_driver(naver_cookies):
@@ -178,49 +181,53 @@ def check(area_list, vaccine_id, naver_cookies, driver, auto_progress):
                 
             
 
-def main():
-    # Areas to monitor: this is bounds param from NAVER map using links like https://m.place.naver.com/rest/vaccine?vaccineFilter=used&x=126.9731665&y=37.5502763&bounds=126.94098%3B37.5125681%3B127.005353%3B37.5879655
-    areas = [
-        '126.7992413%3B37.5587393%3B126.8355692%3B37.5783834',  # 공항
-        '126.8307895%3B37.5514289%3B126.8671173%3B37.5710749',  # 가양
-        '126.9828187%3B37.4831649%3B127.0446168%3B37.5019267'    # 서초~강남
-    ]
-    vaccine_id = 'VEN00015' # Vaccine code: 'VEN00015': AZ, 'VEN00016': Janssen
-    naver_cookies = {       # To Log into NAVER: NNB, NID_AUT, NID_JKL, NID_SES cookies
-        'NNB': 'AFQAQGVV37EGA',
-        'NID_AUT': 'CLW9ByqiNqGEbrtG/tG79Qrv3FAtTEb9bTFfW+C8o4d8MmZohL08KYuEZWh/sFRs',
-        'NID_JKL': '8V+/hO68WQfz3DYqgi3eHkt1zvDlouj7hdWvdWvm6hM=',
-        'NID_SES': 'AAABkWYlwtTQDKBbPXGkITDMxjREq1U9CTJhdtiitAL/CDV5NDIJ4nGRcHcC7kI2H6ypeeQjvUBFF45owJdqjrnDyEXOCYQ08RKSTv9PfDVTrM3AzHLX96SMOjEM02CI0JgLQzy/5LAvO0SZ4+EOM/WptrL/Mcnw13JKtrH8A/gfcOdpRjHOFbGHD9/gZl1UkwUv6q1PIuCdwBPqNHlAh3ch6hND8pEgBqT9KFxVGNqL3V9XCh8rB/HC8JJL85YGgify24zC4dZx17v9j53seHnaEVVyjdv2Ag88drkhQULZfq1j9KIq/rbXcZPls9U1hf42WvrSWLbqdHc1fIDIiIuAF2CNrxiI+cwoMN/2c/yhlRnpi1tOHtQf7pPEn0YJ+K4dsFlYvxLNQ4IrybpaV7w+Js1Xdse4yqPMYxPM1DqcAxpMIgrFn68TgKY9Lf+ffOggkfgTlBO+esPH2doCKnHeJ4jycpr7ewE2JjdEBD6YtavLeDdmYuZkAcIViJRdz2OCu3a2KDT+JCH8WPDaqPd8L2NtwpYyGKltqRa2RBsnQ3lN',
+def main(areas, vaccine, naver_cookies):
+    vaccines = {
+        'AZ': 'VEN00015',
+        'JS': 'VEN00016'
     }
-
     # Build floats from bounds; separator ";" urlencoded "%3B"
     area_list = [a.split('%3B') for a in areas] 
+    vaccine_id = vaccines[vaccine]
 
     # Login into NAVER
     driver = prepare_naver_driver(naver_cookies)
 
-    # System call
-    os.system('')
-    print(f'Monitoring {style.BOLD}{len(area_list)}{style.ENDC} areas')
+    print(f'Monitoring {style.BOLD}{len(area_list)}{style.ENDC} areas for {vaccine_id}')
     sys.stdout.flush()
     result = None
     while not result:
         sys.stdout.flush()
         start_time = time.perf_counter()
-        result = check(area_list, vaccine_id, naver_cookies, driver=driver, auto_progress=False)
+        result = check(area_list, vaccine_id, naver_cookies, driver=driver, auto_progress=True)
         end_time = time.perf_counter()
         if result:
-            #input(f'{style.SUCCESS}Waiting for user input {style.ENDC}')
-            print(f'- took: {end_time - start_time:.2f}s,')
-            print(f'{style.SUCCESS}{result}')
-            result = None
+            print(f'{style.SUCCESS}{result}{style.ENDC}')
+            input(f'Waiting for user input')
         else:
-            wait_time = random.random() / 2.0
+            wait_time = 0.3 + random.random() / 2.0
             print(f'- took: {end_time - start_time:.2f}s, wait: {wait_time:.2f}s')
             time.sleep(wait_time) # Check every 0.3 ~ 1.3 sec
 
 
-
 if __name__ == '__main__':
     # Execute only if run as a script
-    main()
+    import argparse
+    parser = argparse.ArgumentParser()
+    parser.add_argument('-a', '--areas', nargs='+', 
+        help='Areas: bounds from url',
+        # 서초 ~ 강남 https://m.place.naver.com/rest/vaccine?vaccineFilter=used&x=126.9731665&y=37.5502763&bounds=126.94098%3B37.5125681%3B127.005353%3B37.5879655
+        default='126.9828187%3B37.4831649%3B127.0446168%3B37.5019267')
+    parser.add_argument('-v', '--vaccine', required=True, help='Vaccine code: AZ, JS')
+    parser.add_argument('-NN', '--NNB', required=True, help='NAVER NNB cookie')
+    parser.add_argument('-NA', '--NID_AUT', required=True, help='NAVER NID_AUT cookie')
+    parser.add_argument('-NJ', '--NID_JKL', required=True, help='NAVER NID_JKL cookie')
+    parser.add_argument('-NS', '--NID_SES', required=True, help='NAVER NID_SES cookie')
+    args = parser.parse_args()
+    naver_cookies = { 
+        'NNB': args.NNB,
+        'NID_AUT': args.NID_AUT,
+        'NID_JKL': args.NID_JKL,
+        'NID_SES': args.NID_SES,
+    }
+    main(args.areas, args.vaccine, naver_cookies=naver_cookies)
