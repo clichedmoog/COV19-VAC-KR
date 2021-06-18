@@ -1,6 +1,7 @@
 import argparse
 import json
 import random
+import os
 import sys
 import time
 
@@ -147,6 +148,7 @@ def view_agency(cd, sid, naver_cookies, vaccine_id, driver, auto_progress=False)
         if result_title == '당일 예약정보입니다.' or result_title.endswith('잔여백신 당일 예약이 완료되었습니다.'):
             print(f'{style.SUCCESS}Successful {style.ENDC}')
             driver.switch_to.window(driver.current_window_handle)
+            os.system('say 신청 완료')
             return True
         elif result_title == '잔여백신 당일 예약이 실패되었습니다.':
             print(f'{style.WARNING}Failed {style.ENDC}')
@@ -158,6 +160,7 @@ def view_agency(cd, sid, naver_cookies, vaccine_id, driver, auto_progress=False)
         print(f'Will open page {r.url}')
         driver.get(r.url)
         driver.switch_to.window(driver.current_window_handle)
+        os.system('say 페이지에서 진행해주세요.')
         return True
 
 
