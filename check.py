@@ -125,7 +125,7 @@ def view_agency(cd, sid, naver_cookies, vaccine_ids, driver, auto_progress):
     session.cookies.set('NID_JKL', naver_cookies.get('NID_AUT'), path='/', domain='.naver.com', secure=True)
     session.cookies.set('NID_SES', naver_cookies.get('NID_SES'), path='/', domain='.naver.com')
     url = item_url.format(**locals())
-    print(f'{style.OK}Checking vaccine available: {url} {style.ENDC}')
+    print(f'{style.OK}백신이 유요한지 확인: {url} {style.ENDC}')
     r = session.get(url, headers=headers, allow_redirects=False)
     # Redirect many times until get last page
     while r.status_code == 301 or r.status_code == 302:
@@ -152,7 +152,8 @@ def view_agency(cd, sid, naver_cookies, vaccine_ids, driver, auto_progress):
             break
     if not found:
         print('원하는 백신이 없습니다.')
-    print(f'{style.OK}Found vaccine available: {r.url} {style.ENDC}')
+        return None
+    print(f'{style.OK}백신을 찾았습니다: {r.url} {style.ENDC}')
     if auto_progress:
         url = progress_url.format(**locals())
         print(f'{style.OK}신청 주소를 이용하여 자동 진행합니다: {url} ... {style.ENDC}')
@@ -163,21 +164,21 @@ def view_agency(cd, sid, naver_cookies, vaccine_ids, driver, auto_progress):
             result_title = elem.get_attribute('textContent')
             print(f'Got title from page: {result_title}')
         except NoSuchElementException:
-            print(f'{style.WARNING}Failed? {style.ENDC}')
+            print(f'{style.WARNING}실패? {style.ENDC}')
             return False
         if result_title == '당일 예약정보입니다.' or result_title.endswith('잔여백신 당일 예약이 완료되었습니다.'):
-            print(f'{style.SUCCESS}Successful {style.ENDC}')
+            print(f'{style.SUCCESS}성공 {style.ENDC}')
             driver.switch_to.window(driver.current_window_handle)
             os.system('say 신청 완료')
             return True
         elif result_title == '잔여백신 당일 예약이 실패되었습니다.':
-            print(f'{style.WARNING}Failed {style.ENDC}')
+            print(f'{style.WARNING}실패 {style.ENDC}')
             return False
         else:
-            print(f'{style.WARNING}Failed? {style.ENDC}')
+            print(f'{style.WARNING}실패? {style.ENDC}')
             return False
     else:
-        print(f'Will open page {r.url}')
+        print(f'페이지를 여는 중: {r.url}')
         driver.get(r.url)
         driver.switch_to.window(driver.current_window_handle)
         os.system('say 페이지에서 진행해주세요.')
