@@ -20,7 +20,7 @@ from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions
 
 
-map_url = 'https://m.place.naver.com/rest/vaccine?bounds={bounds}'
+map_url = 'https://m.place.naver.com/rest/vaccine?vaccineFilter=used&bounds={bounds}'
 list_url = 'https://api.place.naver.com/graphql'
 item_url = 'https://v-search.nid.naver.com/reservation/standby?orgCd={cd}&sid={sid}'
 progress_url = 'https://v-search.nid.naver.com/reservation/progress?key={key}&cd={vaccine_id}'
@@ -60,7 +60,6 @@ def check_agencies(x1='126.8281358', y1='37.5507676', x2='126.8603223', y2='37.5
             "variables":{
                 "input":{
                     "keyword":"코로나백신위탁의료기관",
-                    "categories":["1004836"],
                     "x": f"{(x1 + x2) / 2}",
                     "y": f"{(y1 + y2) / 2}"
                 },
@@ -83,25 +82,23 @@ def check_agencies(x1='126.8281358', y1='37.5507676', x2='126.8603223', y2='37.5
         'Content-Type': 'application/json',
         'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/14.1 Safari/605.1.15',
         'Host': 'api.place.naver.com',
+        'Referer': map_url.format(bounds=f'{x1}%3B{y1}%3B{x2}%3B{y2}'),
         'Content-Length': str(len(json.dumps(data)))
     }
     try:
         r = requests.post(list_url, headers=headers, json=data, timeout=TIMEOUT)
         items = r.json()[0]['data']['rests']['businesses']['items']
+    # Request timeout
     except requests.exceptions.ReadTimeout:
-        # Request timeout
         print(f'{style.WARNING}T{style.ENDC}', end=' ')
         return []
-    except json.JSONDecodeError:
-        # Did not not get correct response; Maybe not JSON or server error
-        print(f'{style.ERROR}E{style.ENDC}', end=' ')
+    # Did not not get correct response; Maybe not JSON or server error
+    except (json.JSONDecodeError, TypeError):
+        print(f'{style.ERROR}D{style.ENDC}', end=' ')
         return []
-    except TypeError:
-        # Did not not get correct response - Maybe with no result or server error
-        print(f'{style.WARNING}E{style.ENDC}', end=' ')
-        return []
-    except requests.exceptions.ConnectionError:
-        print(f'{style.ERROR}E{style.ENDC}', end=' ')
+    # Response error; Maybe server error
+    except (requests.exceptions.ConnectionError, requests.exceptions.ChunkedEncodingError):
+        print(f'{style.ERROR}R{style.ENDC}', end=' ')
         return []
     found_items = []
     print(f'{len(items)}', end=' ')
@@ -125,13 +122,12 @@ def view_agency(cd, sid, naver_cookies, vaccine_ids, driver, auto_progress):
     session.cookies.set('NID_JKL', naver_cookies.get('NID_AUT'), path='/', domain='.naver.com', secure=True)
     session.cookies.set('NID_SES', naver_cookies.get('NID_SES'), path='/', domain='.naver.com')
     url = item_url.format(**locals())
-    print(f'{style.OK}백신이 유요한지 확인: {url} {style.ENDC}')
+    print(f'{datetime.datetime.now():%H:%M:%S} {style.OK}백신이 유효한지 확인: {url} {style.ENDC}')
     r = session.get(url, headers=headers, allow_redirects=False)
     # Redirect many times until get last page
     while r.status_code == 301 or r.status_code == 302:
         url = r.headers['Location'].replace('http://', 'https://')
         r = session.get(url, headers=headers, allow_redirects=False)
-    driver.get(r.url)
     # Get key for auto progress
     o = urlparse(r.url)
     qs = parse_qs(o.query)
@@ -142,7 +138,7 @@ def view_agency(cd, sid, naver_cookies, vaccine_ids, driver, auto_progress):
     # Check vaccine out of stock
     elem = soup.find(id='info_item_exist')
     if len(elem.find('ul').find_all('li')) < 1:
-        print('신청 가능한 백신이 없습니다.')
+        print(f'{datetime.datetime.now():%H:%M:%S} 신청 가능한 백신이 없습니다.')
         return None
     # Check the radio button disabled
     found = False
@@ -151,12 +147,14 @@ def view_agency(cd, sid, naver_cookies, vaccine_ids, driver, auto_progress):
             found = True
             break
     if not found:
-        print('원하는 백신이 없습니다.')
+        print('{datetime.datetime.now():%H:%M:%S} 원하는 백신이 없습니다.')
         return None
-    print(f'{style.OK}백신을 찾았습니다: {r.url} {style.ENDC}')
+    print(f'{datetime.datetime.now():%H:%M:%S} {style.OK}백신을 찾았습니다: {r.url} {style.ENDC}')
+    driver.get(r.url)
+    driver.switch_to.window(driver.current_window_handle)
     if auto_progress:
         url = progress_url.format(**locals())
-        print(f'{style.OK}신청 주소를 이용하여 자동 진행합니다: {url} ... {style.ENDC}')
+        print(f'{datetime.datetime.now():%H:%M:%S} {style.OK}신청 주소를 이용하여 자동 진행합니다: {url} ... {style.ENDC}')
         driver.get(url)
         time.sleep(3)   # Wait page loads
         elem = driver.find_element(By.CLASS_NAME, 'h_title')
@@ -164,22 +162,20 @@ def view_agency(cd, sid, naver_cookies, vaccine_ids, driver, auto_progress):
             result_title = elem.get_attribute('textContent')
             print(f'Got title from page: {result_title}')
         except NoSuchElementException:
-            print(f'{style.WARNING}실패? {style.ENDC}')
+            print(f'{datetime.datetime.now():%H:%M:%S} {style.WARNING}실패? {style.ENDC}')
             return False
         if result_title == '당일 예약정보입니다.' or result_title.endswith('잔여백신 당일 예약이 완료되었습니다.'):
-            print(f'{style.SUCCESS}성공 {style.ENDC}')
+            print(f'{datetime.datetime.now():%H:%M:%S} {style.SUCCESS}성공 {style.ENDC}')
             driver.switch_to.window(driver.current_window_handle)
             os.system('say 신청 완료')
             return True
         elif result_title == '잔여백신 당일 예약이 실패되었습니다.':
-            print(f'{style.WARNING}실패 {style.ENDC}')
+            print(f'{datetime.datetime.now():%H:%M:%S} {style.WARNING}실패 {style.ENDC}')
             return False
         else:
-            print(f'{style.WARNING}실패? {style.ENDC}')
+            print(f'{datetime.datetime.now():%H:%M:%S} {style.WARNING}실패? {style.ENDC}')
             return False
     else:
-        print(f'페이지를 여는 중: {r.url}')
-        driver.get(r.url)
         driver.switch_to.window(driver.current_window_handle)
         os.system('say 페이지에서 진행해주세요.')
         return True
@@ -198,6 +194,7 @@ def prepare_naver_driver(naver_cookies):
     driver.add_cookie({'name' : 'NID_JKL', 'value' : naver_cookies.get('NID_JKL'), 'path': '/', 'domain' : '.naver.com', 'secure': True})
     driver.add_cookie({'name' : 'NID_SES', 'value' : naver_cookies.get('NID_SES'), 'path': '/', 'domain' : '.naver.com'})
     driver.refresh()
+    driver.get('https://v-search.nid.naver.com/reservation/me')
     return driver
 
 
@@ -211,7 +208,7 @@ def check(area_list, vaccine_ids, naver_cookies, driver, auto_progress):
             name = item['name']
             v = item['vaccineQuantity']
             quantity = v['totalQuantity']
-            print(f'확인중 - {name}, 백신 수 - {quantity} ... ', end=' ')
+            print(f'{datetime.datetime.now():%H:%M:%S} 확인중 - {name}, 백신 수 - {quantity} ... ', end=' ')
             result = view_agency(item['vaccineQuantity']['vaccineOrganizationCode'], item['id'], naver_cookies=naver_cookies, vaccine_ids=vaccine_ids, driver=driver, auto_progress=auto_progress)
             if result:
                 return result
@@ -234,15 +231,17 @@ def main(areas, vaccines, naver_cookies, auto_progress):
         print(f'원하는 백신이 발견되면 자동으로 신청합니다.')
     sys.stdout.flush()
     result = None
-    count = 1
+    count = 0
     while not result:
         sys.stdout.flush()
-        print(f'{count} : ', end='')
-        if datetime.datetime.now().hour <= 8 or datetime.datetime.now().hour >= 18:
-            print(f'백신 신청 시간이 아닙니다 - 10분 대기합니다.')
+        print(f'{datetime.datetime.now():%H:%M:%S} {count:05d} : ', end='')
+        if datetime.datetime.now().hour < 8 or datetime.datetime.now().hour >= 18:
+            print(f'백신 신청 시간이 아님 - 10분 대기')
             time.sleep(600)
             continue
         else:
+            count += 1
+            # Masture time for check and decide wait time
             start_time = time.perf_counter()
             result = check(area_list, vaccine_ids, naver_cookies, driver=driver, auto_progress=auto_progress)
             end_time = time.perf_counter()
@@ -251,10 +250,9 @@ def main(areas, vaccines, naver_cookies, auto_progress):
                 input(f'사용자 입력을 기다립니다.')
             else:
                 # Check every 1 sec
-                wait_time = 1.0 - (end_time - start_time) if (end_time - start_time) < 1.0 else 0.0
+                wait_time = 1.1 - (end_time - start_time) if (end_time - start_time) < 1.0 else 0.0
                 print(f'- 시간: {end_time - start_time:.2f}s, 대기: {wait_time:.2f}s')
                 time.sleep(wait_time)
-            count += 1
 
 
 if __name__ == '__main__':
