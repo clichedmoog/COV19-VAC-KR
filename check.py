@@ -232,8 +232,8 @@ def main(areas, vaccines, naver_cookies, auto_progress):
     sys.stdout.flush()
     result = None
     count = 0
-    # Check every 0.6 * area count sec
-    interval = len(areas) * 0.6
+    # Check every 0.7 * area count sec
+    interval = len(areas) * 0.7
     while not result:
         sys.stdout.flush()
         print(f'{datetime.datetime.now():%H:%M:%S} {count:05d} : ', end='')
