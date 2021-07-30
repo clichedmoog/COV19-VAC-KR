@@ -232,10 +232,12 @@ def main(areas, vaccines, naver_cookies, auto_progress):
     sys.stdout.flush()
     result = None
     count = 0
+    # Check every 0.6 * area count sec
+    interval = len(areas) * 0.6
     while not result:
         sys.stdout.flush()
         print(f'{datetime.datetime.now():%H:%M:%S} {count:05d} : ', end='')
-        if datetime.datetime.now().hour < 8 or datetime.datetime.now().hour >= 18:
+        if datetime.datetime.now().hour <= 8 or datetime.datetime.now().hour >= 16:
             print(f'백신 신청 시간이 아님 - 10분 대기')
             time.sleep(600)
             continue
@@ -249,8 +251,8 @@ def main(areas, vaccines, naver_cookies, auto_progress):
                 print(f'{style.SUCCESS}{result}{style.ENDC}')
                 input(f'사용자 입력을 기다립니다.')
             else:
-                # Check every 1 sec
-                wait_time = 1.1 - (end_time - start_time) if (end_time - start_time) < 1.0 else 0.0
+                # Fill wait time using excute time
+                wait_time = interval - (end_time - start_time) if (end_time - start_time) < interval else 0.0
                 print(f'- 시간: {end_time - start_time:.2f}s, 대기: {wait_time:.2f}s')
                 time.sleep(wait_time)
 
