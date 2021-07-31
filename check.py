@@ -146,7 +146,7 @@ def view_agency(cd, sid, naver_cookies, vaccine_ids, driver, auto_progress):
             found = True
             break
     if not found:
-        print('{datetime.datetime.now():%H:%M:%S} 원하는 백신이 없습니다.')
+        print(f'{datetime.datetime.now():%H:%M:%S} 원하는 백신이 없습니다.')
         return None
     print(f'{datetime.datetime.now():%H:%M:%S} {style.OK}백신을 찾았습니다: {r.url} {style.ENDC}')
     driver.get(r.url)
@@ -185,7 +185,7 @@ def prepare_naver_driver(naver_cookies):
     driver = webdriver.Chrome(driver_path)
     driver.set_window_size(640, 1136)   # Mobile size
     wait = WebDriverWait(driver, 10)
-    driver.get('https://v-search.nid.naver.com/reservation/me')
+    driver.get('https://m.naver.com')
     WebDriverWait(driver, timeout).until(expected_conditions.url_changes('data;')) # Time to load
     time.sleep(1)
     if naver_cookies.get('NID_SES'):
@@ -198,11 +198,11 @@ def prepare_naver_driver(naver_cookies):
         # Request login into NAVER
         driver.get('https://nid.naver.com/nidlogin.login?svctype=262144')
         while not driver.get_cookie('NID_SES'):
-            naver_cookies['NNB'] = driver.get_cookie('NNB')
-            naver_cookies['NID_AUT'] = driver.get_cookie('NID_AUT')
-            naver_cookies['NID_JKL'] = driver.get_cookie('NID_JKL')
-            naver_cookies['NID_SES'] = driver.get_cookie('NID_SES')
             input('네이버 로그인 후 리턴 키를 눌러주세요')
+        naver_cookies['NNB'] = driver.get_cookie('NNB').get('value')
+        naver_cookies['NID_AUT'] = driver.get_cookie('NID_AUT').get('value')
+        naver_cookies['NID_JKL'] = driver.get_cookie('NID_JKL').get('value')
+        naver_cookies['NID_SES'] = driver.get_cookie('NID_SES').get('value')
         print(f'{datetime.datetime.now():%H:%M:%S} {style.OK}로그인이 확인되었습니다.{style.ENDC}')
     driver.refresh()
     driver.get('https://v-search.nid.naver.com/reservation/me')
@@ -251,6 +251,8 @@ def check(area_list, vaccine_ids, naver_cookies, driver, auto_progress):
 
 
 def main(areas, vaccines, naver_cookies, auto_progress):
+    show_command = True if not areas or not vaccines or not naver_cookies else False
+
     # Login into NAVER
     driver = prepare_naver_driver(naver_cookies)
 
@@ -259,6 +261,17 @@ def main(areas, vaccines, naver_cookies, auto_progress):
 
     if not vaccines:
         vaccines = [input_vaccine()]
+
+    # Show command for next run
+    if show_command:
+        print('python3 check.py -a {} -v {} -NN {} -NA {} -NJ {} -NS {}'.format(
+            '"' + '" "'.join(areas) + '"',
+            ' '.join(vaccines),
+            '"' + naver_cookies['NNB'] + '"',
+            '"' + naver_cookies['NID_AUT'] + '"',
+            '"' + naver_cookies['NID_JKL'] + '"',
+            '"' + naver_cookies['NID_SES'] + '"',
+        ))
 
     # Build floats from bounds; separator ";" urlencoded "%3B"
     area_list = [a.split('%3B') for a in areas]
@@ -280,7 +293,7 @@ def main(areas, vaccines, naver_cookies, auto_progress):
     while not result:
         sys.stdout.flush()
         print(f'{datetime.datetime.now():%H:%M:%S} {count:05d} : ', end='')
-        if datetime.datetime.now().hour <= 8 or datetime.datetime.now().hour >= 1:
+        if datetime.datetime.now().hour <= 8 or datetime.datetime.now().hour >= 18:
             print(f'백신 신청 시간이 아님 - 10분 대기')
             time.sleep(600)
             continue
