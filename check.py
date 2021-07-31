@@ -1,7 +1,11 @@
+# -*- coding: utf-8 -*-
+
 import argparse
 import datetime
 import json
 import os
+import platform
+import re
 import sys
 import time
 
@@ -45,7 +49,7 @@ class style:
     UNDERLINE = '\033[4m'
 
 # Check agencies
-def check_agencies(x1='126.8281358', y1='37.5507676', x2='126.8603223', y2='37.5872323'):
+def list_agencies(x1='126.8281358', y1='37.5507676', x2='126.8603223', y2='37.5872323'):
     try:
         x1 = Decimal(x1)
         y1 = Decimal(y1)
@@ -100,14 +104,9 @@ def check_agencies(x1='126.8281358', y1='37.5507676', x2='126.8603223', y2='37.5
     except (requests.exceptions.ConnectionError, requests.exceptions.ChunkedEncodingError):
         print(f'{style.ERROR}R{style.ENDC}', end=' ')
         return []
-    found_items = []
+    # Display agencies count
     print(f'{len(items)}', end=' ')
-    for item in items:
-        v = item['vaccineQuantity']
-        if v and v['totalQuantity'] != 0:
-            found_items.append(item)
-
-    return found_items
+    return items
 
 
 # Follow redirects and get progress url
@@ -167,7 +166,6 @@ def view_agency(cd, sid, naver_cookies, vaccine_ids, driver, auto_progress):
         if result_title == '당일 예약정보입니다.' or result_title.endswith('잔여백신 당일 예약이 완료되었습니다.'):
             print(f'{datetime.datetime.now():%H:%M:%S} {style.SUCCESS}성공 {style.ENDC}')
             driver.switch_to.window(driver.current_window_handle)
-            os.system('say 신청 완료')
             return True
         elif result_title == '잔여백신 당일 예약이 실패되었습니다.':
             print(f'{datetime.datetime.now():%H:%M:%S} {style.WARNING}실패 {style.ENDC}')
@@ -177,58 +175,103 @@ def view_agency(cd, sid, naver_cookies, vaccine_ids, driver, auto_progress):
             return False
     else:
         driver.switch_to.window(driver.current_window_handle)
-        os.system('say 페이지에서 진행해주세요.')
+        print(f'{datetime.datetime.now():%H:%M:%S} {style.SUCCESS}페이지에서 진행해주세요.{style.ENDC}')
         return True
 
 
 def prepare_naver_driver(naver_cookies):
-        # Login into NAVER
     timeout = 10
-    driver = webdriver.Chrome('./chromedriver')
+    driver_path = 'chromedriver.exe' if platform.system() == 'Windows' else f'./chromedriver_{platform.machine()}'
+    driver = webdriver.Chrome(driver_path)
+    driver.set_window_size(640, 1136)   # Mobile size
     wait = WebDriverWait(driver, 10)
-    driver.get('https://www.naver.com')
+    driver.get('https://v-search.nid.naver.com/reservation/me')
     WebDriverWait(driver, timeout).until(expected_conditions.url_changes('data;')) # Time to load
     time.sleep(1)
-    driver.add_cookie({'name' : 'NNB', 'value' : naver_cookies.get('NNB'), 'path': '/', 'domain' : '.naver.com', 'secure': True})
-    driver.add_cookie({'name' : 'NID_AUT', 'value' : naver_cookies.get('NID_AUT'), 'path': '/', 'domain' : '.naver.com'})
-    driver.add_cookie({'name' : 'NID_JKL', 'value' : naver_cookies.get('NID_JKL'), 'path': '/', 'domain' : '.naver.com', 'secure': True})
-    driver.add_cookie({'name' : 'NID_SES', 'value' : naver_cookies.get('NID_SES'), 'path': '/', 'domain' : '.naver.com'})
+    if naver_cookies.get('NID_SES'):
+        # Login into NAVER
+        driver.add_cookie({'name' : 'NNB', 'value' : naver_cookies.get('NNB'), 'path': '/', 'domain' : '.naver.com', 'secure': True})
+        driver.add_cookie({'name' : 'NID_AUT', 'value' : naver_cookies.get('NID_AUT'), 'path': '/', 'domain' : '.naver.com'})
+        driver.add_cookie({'name' : 'NID_JKL', 'value' : naver_cookies.get('NID_JKL'), 'path': '/', 'domain' : '.naver.com', 'secure': True})
+        driver.add_cookie({'name' : 'NID_SES', 'value' : naver_cookies.get('NID_SES'), 'path': '/', 'domain' : '.naver.com'})
+    else:
+        # Request login into NAVER
+        driver.get('https://nid.naver.com/nidlogin.login?svctype=262144')
+        while not driver.get_cookie('NID_SES'):
+            naver_cookies['NNB'] = driver.get_cookie('NNB')
+            naver_cookies['NID_AUT'] = driver.get_cookie('NID_AUT')
+            naver_cookies['NID_JKL'] = driver.get_cookie('NID_JKL')
+            naver_cookies['NID_SES'] = driver.get_cookie('NID_SES')
+            input('네이버 로그인 후 리턴 키를 눌러주세요')
+        print(f'{datetime.datetime.now():%H:%M:%S} {style.OK}로그인이 확인되었습니다.{style.ENDC}')
     driver.refresh()
     driver.get('https://v-search.nid.naver.com/reservation/me')
     return driver
 
 
+# Show map and get area bounds
+def input_area(driver):
+    driver.get(map_url.format(bounds=''))
+    while not re.search(r'bounds\=(.+)&*', driver.current_url):
+        input('확인할 지역으로 이동 후 "현 지도에서 검색" 클릭 후 리턴 키를 눌러주세요')
+    matches = re.search(r'bounds\=(.+)&*', driver.current_url)
+    print(f'{datetime.datetime.now():%H:%M:%S} {style.OK}지역이 확인되었습니다.{style.ENDC}')
+    return matches.group(1)
+
+
+def input_vaccine():
+    vaccine_id = None
+    while not vaccine_id in vaccines_id_map.keys():
+        for k, v in vaccines_id_map.items():
+            print(f'{k}: {v["name"]}')
+        vaccine_id = input('원하는 백신을 입력해주세요: ')
+    print(f'{datetime.datetime.now():%H:%M:%S} {style.OK}백신 종류가 확인되었습니다.{style.ENDC}')
+    return vaccine_id
+
+
 # Check areas and view_agency when found vaccineQuantity
 def check(area_list, vaccine_ids, naver_cookies, driver, auto_progress):
     for area in area_list:
-        found_items = check_agencies(*area)
-        if len(found_items) > 0:
-            print(f'\n{style.OK}Found {len(found_items)} agencies {style.ENDC}')
-        for item in found_items:
-            name = item['name']
-            v = item['vaccineQuantity']
+        agencies = list_agencies(*area)
+        agencies_found = []
+        for agency in agencies:
+            v = agency['vaccineQuantity']
+            if v and v['totalQuantity'] != 0:
+                agencies_found.append(agency)
+        if len(agencies_found) > 0:
+            print(f'\n{style.OK}백신을 보유한 {len(agencies_found)}개의 접종 기관 발견{style.ENDC}')
+        for agency in agencies_found:
+            name = agency['name']
+            v = agency['vaccineQuantity']
             quantity = v['totalQuantity']
-            print(f'{datetime.datetime.now():%H:%M:%S} 확인중 - {name}, 백신 수 - {quantity} ... ', end=' ')
-            result = view_agency(item['vaccineQuantity']['vaccineOrganizationCode'], item['id'], naver_cookies=naver_cookies, vaccine_ids=vaccine_ids, driver=driver, auto_progress=auto_progress)
+            print(f'{datetime.datetime.now():%H:%M:%S} 확인중 - {name}, 백신 수 - {quantity} ... ')
+            result = view_agency(agency['vaccineQuantity']['vaccineOrganizationCode'], agency['id'], naver_cookies=naver_cookies, vaccine_ids=vaccine_ids, driver=driver, auto_progress=auto_progress)
             if result:
                 return result
 
 
 def main(areas, vaccines, naver_cookies, auto_progress):
+    # Login into NAVER
+    driver = prepare_naver_driver(naver_cookies)
+
+    if not areas:
+        areas = [input_area(driver)]
+
+    if not vaccines:
+        vaccines = [input_vaccine()]
+
     # Build floats from bounds; separator ";" urlencoded "%3B"
     area_list = [a.split('%3B') for a in areas]
     vaccine_ids = [vaccines_id_map[v]['id'] for v in vaccines]
     vaccine_names = [vaccines_id_map[v]['name'] for v in vaccines]
 
-    # Login into NAVER
-    driver = prepare_naver_driver(naver_cookies)
-    driver.minimize_window()
-
-    print(f'{vaccine_names} 백신, {style.BOLD}{len(area_list)}{style.ENDC} 구역을 모니터링합니다:')
+    print(f'{datetime.datetime.now():%H:%M:%S} {style.OK}{vaccine_names} 백신, 다음과 같은 {len(area_list)}개의 구역을 모니터링합니다:{style.ENDC}')
     for area in area_list:
         print(map_url.format(bounds='%3B'.join(area)))
     if auto_progress:
-        print(f'원하는 백신이 발견되면 자동으로 신청합니다.')
+        print(f'{style.OK}원하는 백신이 발견되면 자동으로 신청합니다.{style.ENDC}')
+
+    driver.minimize_window()
     sys.stdout.flush()
     result = None
     count = 0
@@ -237,7 +280,7 @@ def main(areas, vaccines, naver_cookies, auto_progress):
     while not result:
         sys.stdout.flush()
         print(f'{datetime.datetime.now():%H:%M:%S} {count:05d} : ', end='')
-        if datetime.datetime.now().hour <= 8 or datetime.datetime.now().hour >= 16:
+        if datetime.datetime.now().hour <= 8 or datetime.datetime.now().hour >= 1:
             print(f'백신 신청 시간이 아님 - 10분 대기')
             time.sleep(600)
             continue
@@ -261,15 +304,12 @@ if __name__ == '__main__':
     # Execute only if run as a script
     import argparse
     parser = argparse.ArgumentParser()
-    parser.add_argument('-a', '--areas', nargs='+', 
-        help='Areas: bounds from url',
-        # 서초 ~ 강남 https://m.place.naver.com/rest/vaccine?vaccineFilter=used&x=126.9731665&y=37.5502763&bounds=126.9828187%3B37.4831649%3B127.0446168%3B37.5019267
-        default='126.9558315%3B37.4745959%3B127.0656948%3B37.5153529')
-    parser.add_argument('-v', '--vaccines', nargs='+', required=True, help='벡신 종류: AZ, JS, PF, MO')
-    parser.add_argument('-NN', '--NNB', required=True, help='네이버 NNB 쿠키')
-    parser.add_argument('-NA', '--NID_AUT', required=True, help='네이버 NID_AUT 쿠키')
-    parser.add_argument('-NJ', '--NID_JKL', required=True, help='네이버 NID_JKL 쿠키')
-    parser.add_argument('-NS', '--NID_SES', required=True, help='네이버 NID_SES 쿠키')
+    parser.add_argument('-a', '--areas', nargs='+', help='지도로 부터 얻은 bounds 파라메터')
+    parser.add_argument('-v', '--vaccines', nargs='+', help='벡신 종류: AZ, JS, PF, MO')
+    parser.add_argument('-NN', '--NNB', help='네이버 NNB 쿠키')
+    parser.add_argument('-NA', '--NID_AUT', help='네이버 NID_AUT 쿠키')
+    parser.add_argument('-NJ', '--NID_JKL', help='네이버 NID_JKL 쿠키')
+    parser.add_argument('-NS', '--NID_SES', help='네이버 NID_SES 쿠키')
     parser.add_argument('-c', '--check_only', action='store_true', default=False, help='수동으로 신청')
     args = parser.parse_args()
     naver_cookies = {
