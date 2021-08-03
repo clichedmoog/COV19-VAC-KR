@@ -5,17 +5,21 @@ import datetime
 import json
 import os
 import platform
+import random
 import re
 import sys
+import string
 import time
 
 from decimal import Decimal
 from decimal import InvalidOperation
 from urllib.parse import urlparse, parse_qs
 
+import colorama
 import requests
 
 from bs4 import BeautifulSoup
+from colorama import Fore, Style
 from selenium import webdriver
 from selenium.common.exceptions import NoSuchElementException
 from selenium.webdriver.common.by import By
@@ -30,7 +34,6 @@ item_url = 'https://v-search.nid.naver.com/reservation/standby?orgCd={cd}&sid={s
 progress_url = 'https://v-search.nid.naver.com/reservation/progress?key={key}&cd={vaccine_id}'
 TIMEOUT = 5
 session = requests.session()
-
 vaccines_id_map = {
     'PF': {'id': 'VEN00013', 'name': '화이자'},
     'MO': {'id': 'VEN00014', 'name': '모더나'},
@@ -38,18 +41,9 @@ vaccines_id_map = {
     'JS': {'id': 'VEN00016', 'name': '얀센'},
 }
 
-# Colors from https://stackoverflow.com/a/54955094
-class style:
-    ENDC = '\033[0m'
-    OK = '\033[94m'
-    SUCCESS = '\033[92m'
-    WARNING = '\033[93m'
-    ERROR = '\033[91m'
-    BOLD = '\033[1m'
-    UNDERLINE = '\033[4m'
 
 # Check agencies
-def list_agencies(x1='126.8281358', y1='37.5507676', x2='126.8603223', y2='37.5872323'):
+def list_agencies(naver_cookies, x1='126.8281358', y1='37.5507676', x2='126.8603223', y2='37.5872323'):
     try:
         x1 = Decimal(x1)
         y1 = Decimal(y1)
@@ -84,25 +78,27 @@ def list_agencies(x1='126.8281358', y1='37.5507676', x2='126.8603223', y2='37.58
     ]
     headers = {
         'Content-Type': 'application/json',
-        'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/14.1 Safari/605.1.15',
+        'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/92.0.4515.107 Safari/537.36',
         'Host': 'api.place.naver.com',
+        'Origin': 'https://m.place.naver.com',
         'Referer': map_url.format(bounds=f'{x1}%3B{y1}%3B{x2}%3B{y2}'),
-        'Content-Length': str(len(json.dumps(data)))
+        'Cookie': 'NNB='+ naver_cookies.get('NNB')[:-1] + random.choice(string.ascii_uppercase),
+        'Content-Length': str(len(json.dumps(data))),
     }
     try:
         r = requests.post(list_url, headers=headers, json=data, timeout=TIMEOUT)
         items = r.json()[0]['data']['rests']['businesses']['items']
     # Request timeout
     except requests.exceptions.ReadTimeout:
-        print(f'{style.WARNING}T{style.ENDC}', end=' ')
+        print(f'{colorama.Fore.YELLOW}T', end=' ')
         return []
     # Did not not get correct response; Maybe not JSON or server error
     except (json.JSONDecodeError, TypeError):
-        print(f'{style.ERROR}D{style.ENDC}', end=' ')
+        print(f'{colorama.Fore.RED}D', end=' ')
         return []
     # Response error; Maybe server error
     except (requests.exceptions.ConnectionError, requests.exceptions.ChunkedEncodingError):
-        print(f'{style.ERROR}R{style.ENDC}', end=' ')
+        print(f'{colorama.Fore.RED}R', end=' ')
         return []
     # Display agencies count
     print(f'{len(items)}', end=' ')
@@ -121,7 +117,7 @@ def view_agency(cd, sid, naver_cookies, vaccine_ids, driver, auto_progress):
     session.cookies.set('NID_JKL', naver_cookies.get('NID_AUT'), path='/', domain='.naver.com', secure=True)
     session.cookies.set('NID_SES', naver_cookies.get('NID_SES'), path='/', domain='.naver.com')
     url = item_url.format(**locals())
-    print(f'{datetime.datetime.now():%H:%M:%S} {style.OK}백신이 유효한지 확인: {url} {style.ENDC}')
+    print(f'{datetime.datetime.now():%H:%M:%S} {colorama.Fore.BLUE}백신이 유효한지 확인: {url} ')
     r = session.get(url, headers=headers, allow_redirects=False)
     # Redirect many times until get last page
     while r.status_code == 301 or r.status_code == 302:
@@ -136,7 +132,7 @@ def view_agency(cd, sid, naver_cookies, vaccine_ids, driver, auto_progress):
     soup = BeautifulSoup(html, 'html.parser')
     # Check vaccine out of stock
     elem = soup.find(id='info_item_exist')
-    if len(elem.find('ul').find_all('li')) < 1:
+    if elem and len(elem.find('ul').find_all('li')) < 1:
         print(f'{datetime.datetime.now():%H:%M:%S} 신청 가능한 백신이 없습니다.')
         return None
     # Check the radio button disabled
@@ -148,12 +144,12 @@ def view_agency(cd, sid, naver_cookies, vaccine_ids, driver, auto_progress):
     if not found:
         print(f'{datetime.datetime.now():%H:%M:%S} 원하는 백신이 없습니다.')
         return None
-    print(f'{datetime.datetime.now():%H:%M:%S} {style.OK}백신을 찾았습니다: {r.url} {style.ENDC}')
+    print(f'{datetime.datetime.now():%H:%M:%S} {colorama.Fore.BLUE}백신을 찾았습니다: {r.url} ')
     driver.get(r.url)
     driver.switch_to.window(driver.current_window_handle)
     if auto_progress:
         url = progress_url.format(**locals())
-        print(f'{datetime.datetime.now():%H:%M:%S} {style.OK}신청 주소를 이용하여 자동 진행합니다: {url} ... {style.ENDC}')
+        print(f'{datetime.datetime.now():%H:%M:%S} {colorama.Fore.BLUE}신청 주소를 이용하여 자동 진행합니다: {url} ... ')
         driver.get(url)
         time.sleep(3)   # Wait page loads
         elem = driver.find_element(By.CLASS_NAME, 'h_title')
@@ -161,28 +157,30 @@ def view_agency(cd, sid, naver_cookies, vaccine_ids, driver, auto_progress):
             result_title = elem.get_attribute('textContent')
             print(f'Got title from page: {result_title}')
         except NoSuchElementException:
-            print(f'{datetime.datetime.now():%H:%M:%S} {style.WARNING}실패? {style.ENDC}')
+            print(f'{datetime.datetime.now():%H:%M:%S} {colorama.Fore.YELLOW}실패? ')
             return False
         if result_title == '당일 예약정보입니다.' or result_title.endswith('잔여백신 당일 예약이 완료되었습니다.'):
-            print(f'{datetime.datetime.now():%H:%M:%S} {style.SUCCESS}성공 {style.ENDC}')
+            print(f'{datetime.datetime.now():%H:%M:%S} {colorama.Fore.GREEN}성공 ')
             driver.switch_to.window(driver.current_window_handle)
             return True
         elif result_title == '잔여백신 당일 예약이 실패되었습니다.':
-            print(f'{datetime.datetime.now():%H:%M:%S} {style.WARNING}실패 {style.ENDC}')
+            print(f'{datetime.datetime.now():%H:%M:%S} {colorama.Fore.YELLOW}실패 ')
             return False
         else:
-            print(f'{datetime.datetime.now():%H:%M:%S} {style.WARNING}실패? {style.ENDC}')
+            print(f'{datetime.datetime.now():%H:%M:%S} {colorama.Fore.YELLOW}실패? ')
             return False
     else:
         driver.switch_to.window(driver.current_window_handle)
-        print(f'{datetime.datetime.now():%H:%M:%S} {style.SUCCESS}페이지에서 진행해주세요.{style.ENDC}')
+        print(f'{datetime.datetime.now():%H:%M:%S} {colorama.Fore.GREEN}페이지에서 진행해주세요.')
         return True
 
 
 def prepare_naver_driver(naver_cookies):
     timeout = 10
     driver_path = 'chromedriver.exe' if platform.system() == 'Windows' else f'./chromedriver_{platform.machine()}'
-    driver = webdriver.Chrome(driver_path)
+    options = webdriver.ChromeOptions()
+    options.add_argument('log-level=3')
+    driver = webdriver.Chrome(driver_path, options=options)
     driver.set_window_size(640, 1136)   # Mobile size
     wait = WebDriverWait(driver, 10)
     driver.get('https://m.naver.com')
@@ -203,7 +201,7 @@ def prepare_naver_driver(naver_cookies):
         naver_cookies['NID_AUT'] = driver.get_cookie('NID_AUT').get('value')
         naver_cookies['NID_JKL'] = driver.get_cookie('NID_JKL').get('value')
         naver_cookies['NID_SES'] = driver.get_cookie('NID_SES').get('value')
-        print(f'{datetime.datetime.now():%H:%M:%S} {style.OK}로그인이 확인되었습니다.{style.ENDC}')
+        print(f'{datetime.datetime.now():%H:%M:%S} {colorama.Fore.BLUE}로그인이 확인되었습니다.')
     driver.refresh()
     driver.get('https://v-search.nid.naver.com/reservation/me')
     return driver
@@ -215,7 +213,7 @@ def input_area(driver):
     while not re.search(r'bounds\=(.+)&*', driver.current_url):
         input('확인할 지역으로 이동 후 "현 지도에서 검색" 클릭 후 리턴 키를 눌러주세요')
     matches = re.search(r'bounds\=(.+)&*', driver.current_url)
-    print(f'{datetime.datetime.now():%H:%M:%S} {style.OK}지역이 확인되었습니다.{style.ENDC}')
+    print(f'{datetime.datetime.now():%H:%M:%S} {colorama.Fore.BLUE}지역이 확인되었습니다.')
     return matches.group(1)
 
 
@@ -225,21 +223,21 @@ def input_vaccine():
         for k, v in vaccines_id_map.items():
             print(f'{k}: {v["name"]}')
         vaccine_id = input('원하는 백신을 입력해주세요: ')
-    print(f'{datetime.datetime.now():%H:%M:%S} {style.OK}백신 종류가 확인되었습니다.{style.ENDC}')
+    print(f'{datetime.datetime.now():%H:%M:%S} {colorama.Fore.BLUE}백신 종류가 확인되었습니다.')
     return vaccine_id
 
 
 # Check areas and view_agency when found vaccineQuantity
 def check(area_list, vaccine_ids, naver_cookies, driver, auto_progress):
     for area in area_list:
-        agencies = list_agencies(*area)
+        agencies = list_agencies(naver_cookies, *area)
         agencies_found = []
         for agency in agencies:
             v = agency['vaccineQuantity']
             if v and v['totalQuantity'] != 0:
                 agencies_found.append(agency)
         if len(agencies_found) > 0:
-            print(f'\n{style.OK}백신을 보유한 {len(agencies_found)}개의 접종 기관 발견{style.ENDC}')
+            print(f'\n{colorama.Fore.BLUE}백신을 보유한 {len(agencies_found)}개의 접종 기관 발견')
         for agency in agencies_found:
             name = agency['name']
             v = agency['vaccineQuantity']
@@ -251,6 +249,8 @@ def check(area_list, vaccine_ids, naver_cookies, driver, auto_progress):
 
 
 def main(areas, vaccines, naver_cookies, auto_progress):
+    colorama.init(autoreset=True)
+
     show_command = True if not areas or not vaccines or not naver_cookies else False
 
     # Login into NAVER
@@ -264,6 +264,7 @@ def main(areas, vaccines, naver_cookies, auto_progress):
 
     # Show command for next run
     if show_command:
+        print(f'Command for next run:')
         print('python3 check.py -a {} -v {} -NN {} -NA {} -NJ {} -NS {}'.format(
             '"' + '" "'.join(areas) + '"',
             ' '.join(vaccines),
@@ -278,11 +279,11 @@ def main(areas, vaccines, naver_cookies, auto_progress):
     vaccine_ids = [vaccines_id_map[v]['id'] for v in vaccines]
     vaccine_names = [vaccines_id_map[v]['name'] for v in vaccines]
 
-    print(f'{datetime.datetime.now():%H:%M:%S} {style.OK}{vaccine_names} 백신, 다음과 같은 {len(area_list)}개의 구역을 모니터링합니다:{style.ENDC}')
+    print(f'{datetime.datetime.now():%H:%M:%S} {colorama.Fore.BLUE}{vaccine_names} 백신, 다음과 같은 {len(area_list)}개의 구역을 모니터링합니다:')
     for area in area_list:
         print(map_url.format(bounds='%3B'.join(area)))
     if auto_progress:
-        print(f'{style.OK}원하는 백신이 발견되면 자동으로 신청합니다.{style.ENDC}')
+        print(f'{colorama.Fore.BLUE}원하는 백신이 발견되면 자동으로 신청합니다.')
 
     driver.minimize_window()
     sys.stdout.flush()
@@ -293,7 +294,7 @@ def main(areas, vaccines, naver_cookies, auto_progress):
     while not result:
         sys.stdout.flush()
         print(f'{datetime.datetime.now():%H:%M:%S} {count:05d} : ', end='')
-        if datetime.datetime.now().hour <= 8 or datetime.datetime.now().hour >= 18:
+        if datetime.datetime.now().hour < 8 or datetime.datetime.now().hour >= 19:
             print(f'백신 신청 시간이 아님 - 10분 대기')
             time.sleep(600)
             continue
@@ -304,7 +305,7 @@ def main(areas, vaccines, naver_cookies, auto_progress):
             result = check(area_list, vaccine_ids, naver_cookies, driver=driver, auto_progress=auto_progress)
             end_time = time.perf_counter()
             if result:
-                print(f'{style.SUCCESS}{result}{style.ENDC}')
+                print(f'{colorama.Fore.GREEN}{result}')
                 input(f'사용자 입력을 기다립니다.')
             else:
                 # Fill wait time using excute time
